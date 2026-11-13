@@ -1,0 +1,4 @@
+# cat=basic; type=int+; label=Documents per page in the audit listing (1 to 1000)
+paginationSize = 100
+# cat=basic; type=int+; label=Cache lifetime of the audit listing in seconds (Cache-Control max-age)
+cacheTtl = 300
