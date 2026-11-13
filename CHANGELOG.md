@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The listing follows Draft 0.4 of the specification and says so in
+  `specVersion`.
 - Each document is listed with the level it reaches, and the listing claims
   the lowest of them, instead of a level derived from the installed
   extensions.

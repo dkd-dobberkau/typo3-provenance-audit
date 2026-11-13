@@ -29,7 +29,7 @@ use TYPO3\CMS\Core\Utility\MathUtility;
  */
 final readonly class AuditListingHandler implements WellKnownHandlerInterface
 {
-    private const SPEC_VERSION = '0.3';
+    private const SPEC_VERSION = '0.4';
     private const KEYS_PATH = WellKnownRouter::BASE_PATH . '/keys';
     private const DEFAULT_PAGE_SIZE = 100;
     private const MAX_PAGE_SIZE = 1000;

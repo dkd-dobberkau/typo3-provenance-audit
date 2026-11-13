@@ -38,7 +38,7 @@ final class AuditEndpointTest extends FunctionalTestCase
     {
         $listing = $this->listing($this->request('http://localhost' . self::ENDPOINT));
 
-        self::assertSame('0.3', $listing->specVersion);
+        self::assertSame('0.4', $listing->specVersion);
         // The lowest level among the listed documents: two of them are complete but unsigned.
         self::assertSame(2, $listing->cpsConformance);
         self::assertSame('http://localhost/', $listing->site->url);
