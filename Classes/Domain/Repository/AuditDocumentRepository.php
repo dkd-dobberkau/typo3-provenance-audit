@@ -31,7 +31,7 @@ final readonly class AuditDocumentRepository
         }
 
         return $this->documentQuery($pageUids)
-            ->select('p.uid AS page_uid', 'd.document_uri', 'd.first_published_at', 'd.last_substantive_revision_at', 'd.last_maintained_at', 'd.conformance_level')
+            ->select('p.uid AS page_uid', 'd.document_uri', 'd.first_published_at', 'd.last_substantive_revision_at', 'd.last_maintained_at')
             ->orderBy('p.uid')
             ->setFirstResult($offset)
             ->setMaxResults($limit)

@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace CmsProvenance\ProvenanceAudit\WellKnown;
 
+use CmsProvenance\Provenance\Domain\Repository\ProvenanceRecordRepository;
 use CmsProvenance\Provenance\Domain\Repository\PublicPageRepository;
+use CmsProvenance\Provenance\Frontend\JsonLdBuilder;
+use CmsProvenance\Provenance\Service\ConformanceLevel;
 use CmsProvenance\Provenance\Service\AbsoluteUrlResolver;
 use CmsProvenance\Provenance\WellKnown\WellKnownHandlerInterface;
 use CmsProvenance\Provenance\WellKnown\WellKnownRouter;
@@ -39,6 +42,9 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         private Typo3Version $typo3Version,
         private AbsoluteUrlResolver $urlResolver,
         private PublicPageRepository $publicPageRepository,
+        private ProvenanceRecordRepository $recordRepository,
+        private JsonLdBuilder $jsonLdBuilder,
+        private ConformanceLevel $conformanceLevel,
     ) {}
 
     public function getSubPath(): string
@@ -64,17 +70,19 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
             return $this->respond(['error' => 'page out of range'], 404);
         }
 
-        $rows = $this->documentRepository->findDocuments($pageUids, ($page - 1) * $pageSize, $pageSize);
-        $signedRecords = $this->documentRepository->findSignedRecords(array_map(static fn(array $row): int => (int)$row['page_uid'], $rows));
+        // The site's level is the lowest of all its documents, so every document is read.
+        $allRows = $this->documentRepository->findDocuments($pageUids, 0, max(1, $total));
+        $signedRecords = $this->documentRepository->findSignedRecords(array_map(static fn(array $row): int => (int)$row['page_uid'], $allRows));
+        $levels = $this->levels($allRows, $signedRecords);
+        $rows = array_slice($allRows, ($page - 1) * $pageSize, $pageSize);
         $siteUrl = $this->urlResolver->siteUrl($site, $request);
         $signingAvailable = ExtensionManagementUtility::isLoaded('provenance_signing');
-        $factsAvailable = ExtensionManagementUtility::isLoaded('provenance_facts');
 
         $listing = [
             '@context' => ['https://schema.org', 'https://cms-provenance.org/ns/v1'],
             'specVersion' => self::SPEC_VERSION,
             'generator' => $this->generator(),
-            'cpsConformance' => $this->siteConformanceLevel($signingAvailable, $factsAvailable),
+            'cpsConformance' => $levels !== [] ? min($levels) : 1,
             'site' => array_filter([
                 'url' => $siteUrl,
                 'keys' => $signingAvailable ? rtrim($siteUrl, '/') . self::KEYS_PATH : null,
@@ -83,7 +91,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
             'page' => $page,
             'pageSize' => $pageSize,
             'documents' => array_map(
-                fn(array $row): array => $this->entry($row, $site, $request, $signedRecords[(int)$row['page_uid']] ?? null),
+                fn(array $row): array => $this->entry($row, $site, $request, $signedRecords[(int)$row['page_uid']] ?? null, $levels[(int)$row['page_uid']] ?? 1),
                 $rows
             ),
         ];
@@ -94,7 +102,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
     /**
      * @return array<string, mixed>
      */
-    private function entry(array $row, Site $site, ServerRequestInterface $request, ?\stdClass $signedRecord): array
+    private function entry(array $row, Site $site, ServerRequestInterface $request, ?\stdClass $signedRecord, int $level): array
     {
         $entry = [
             'url' => $this->urlResolver->pageUrl($site, (int)$row['page_uid'], $request),
@@ -102,27 +110,50 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
             'datePublished' => $this->dateTime((int)$row['first_published_at']),
             'lastSubstantiveRevision' => $this->dateTime((int)$row['last_substantive_revision_at']),
             'maintainedDate' => $this->dateTime((int)$row['last_maintained_at']),
-            'cpsConformance' => (int)$row['conformance_level'],
+            'cpsConformance' => $level,
         ];
-        if ($signedRecord !== null && ($signedRecord->{'@id'} ?? null) === $row['document_uri']) {
+        if ($this->belongsTo($signedRecord, $row)) {
             $entry['contentHash'] = $signedRecord->contentHash ?? null;
             $entry['signature'] = $signedRecord->signature ?? null;
-            $entry['cpsConformance'] = (int)($signedRecord->cpsConformance ?? $entry['cpsConformance']);
         }
 
         return array_filter($entry, static fn(mixed $value): bool => $value !== null);
     }
 
     /**
-     * Layer 1 always; Layers 2 and 4 with signing; Layer 3 with facts on top.
+     * The level each listed document reaches (specification Section 4): the
+     * level of its signed record, or for an unsigned page the level its record
+     * reaches without a signature.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @param array<int, \stdClass> $signedRecords by page uid
+     * @return array<int, int> level by page uid
      */
-    private function siteConformanceLevel(bool $signingAvailable, bool $factsAvailable): int
+    private function levels(array $rows, array $signedRecords): array
     {
-        if (!$signingAvailable) {
-            return 2;
+        $levels = [];
+        foreach ($rows as $row) {
+            $pageUid = (int)$row['page_uid'];
+            $signedRecord = $signedRecords[$pageUid] ?? null;
+            if ($this->belongsTo($signedRecord, $row)) {
+                $levels[$pageUid] = (int)($signedRecord->cpsConformance ?? 1);
+                continue;
+            }
+            $record = $this->recordRepository->findByPage($pageUid);
+            $levels[$pageUid] = $record !== null
+                ? $this->conformanceLevel->of($this->jsonLdBuilder->build($record, '', 0, $this->generator()), false, false)
+                : 1;
         }
 
-        return $factsAvailable ? 4 : 3;
+        return $levels;
+    }
+
+    /**
+     * A signed record counts only for the document it was made for.
+     */
+    private function belongsTo(?\stdClass $signedRecord, array $row): bool
+    {
+        return $signedRecord !== null && ($signedRecord->{'@id'} ?? null) === $row['document_uri'];
     }
 
     private function links(string $endpoint, int $page, int $lastPage): string

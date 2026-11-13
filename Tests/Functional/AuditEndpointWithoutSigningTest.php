@@ -24,13 +24,15 @@ final class AuditEndpointWithoutSigningTest extends FunctionalTestCase
     }
 
     #[Test]
-    public function listsDocumentsAtLevelTwoWithoutKeysOrSignatures(): void
+    public function listsEachDocumentAtItsLevelAndTheSiteAtTheLowest(): void
     {
         $response = $this->executeFrontendSubRequest(new InternalRequest('http://localhost/.well-known/content-provenance'));
         $listing = json_decode((string)$response->getBody(), false, 512, JSON_THROW_ON_ERROR);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame(2, $listing->cpsConformance);
+        // The page in the storage folder has a record without author, so it stays at L1.
+        self::assertSame(1, $listing->cpsConformance);
+        self::assertSame([2, 2, 1], array_column($listing->documents, 'cpsConformance'));
         self::assertFalse(isset($listing->site->keys));
         self::assertSame(3, $listing->totalItems);
         foreach ($listing->documents as $document) {

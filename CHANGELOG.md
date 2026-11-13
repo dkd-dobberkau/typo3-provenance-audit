@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Each document is listed with the level it reaches, and the listing claims
+  the lowest of them, instead of a level derived from the installed
+  extensions.
 - The listing takes its public pages from `PublicPageRepository` of the core
   extension, the same rule the facts endpoint uses.
 
