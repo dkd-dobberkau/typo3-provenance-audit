@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace CmsProvenance\ProvenanceAudit\Middleware;
+namespace CmsProvenance\ProvenanceAudit\WellKnown;
 
+use CmsProvenance\Provenance\WellKnown\WellKnownHandlerInterface;
+use CmsProvenance\Provenance\WellKnown\WellKnownRouter;
 use CmsProvenance\ProvenanceAudit\Domain\Repository\AuditDocumentRepository;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Http\JsonResponse;
 use TYPO3\CMS\Core\Information\Typo3Version;
@@ -22,11 +22,10 @@ use TYPO3\CMS\Core\Utility\MathUtility;
  * the site, its keys and a paginated list of its published documents, with
  * content hash and signature where the signing extension has signed a page.
  */
-final readonly class AuditEndpoint implements MiddlewareInterface
+final readonly class AuditListingHandler implements WellKnownHandlerInterface
 {
-    public const PATH = '/.well-known/content-provenance';
     private const SPEC_VERSION = '0.3';
-    private const KEYS_PATH = '/.well-known/content-provenance/keys';
+    private const KEYS_PATH = WellKnownRouter::BASE_PATH . '/keys';
     private const DEFAULT_PAGE_SIZE = 100;
     private const MAX_PAGE_SIZE = 1000;
     private const DEFAULT_CACHE_TTL = 300;
@@ -38,11 +37,16 @@ final readonly class AuditEndpoint implements MiddlewareInterface
         private Typo3Version $typo3Version,
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function getSubPath(): string
+    {
+        return '';
+    }
+
+    public function handle(ServerRequestInterface $request, string $remainder): ResponseInterface
     {
         $site = $request->getAttribute('site');
-        if ($request->getMethod() !== 'GET' || rtrim($request->getUri()->getPath(), '/') !== self::PATH || !$site instanceof Site) {
-            return $handler->handle($request);
+        if ($remainder !== '' || !$site instanceof Site) {
+            return $this->respond(['error' => 'not found'], 404);
         }
 
         $pageSize = $this->pageSize();
@@ -79,7 +83,7 @@ final readonly class AuditEndpoint implements MiddlewareInterface
             ),
         ];
 
-        return $this->respond($listing)->withHeader('Link', $this->links(rtrim($siteUrl, '/') . self::PATH, $page, $lastPage));
+        return $this->respond($listing)->withHeader('Link', $this->links(rtrim($siteUrl, '/') . WellKnownRouter::BASE_PATH, $page, $lastPage));
     }
 
     /**
@@ -120,8 +124,6 @@ final readonly class AuditEndpoint implements MiddlewareInterface
     private function respond(array $data, int $status = 200): ResponseInterface
     {
         return (new JsonResponse($data, $status, [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))
-            ->withHeader('Access-Control-Allow-Origin', '*')
-            ->withHeader('Access-Control-Expose-Headers', 'Link')
             ->withHeader('Cache-Control', 'public, max-age=' . $this->setting('cacheTtl', self::DEFAULT_CACHE_TTL));
     }
 
