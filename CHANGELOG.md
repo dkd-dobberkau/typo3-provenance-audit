@@ -15,3 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   signing extension is installed.
 - Repository skeleton: composer.json, ext_emconf.php, Services.yaml,
   extension icon, contribution guide (milestone M1).
+
+### Fixed
+
+- The listing published relative URLs (site, keys, documents, `Link` header)
+  when the site base was relative, such as `/`. They are now absolute,
+  completed from the request.

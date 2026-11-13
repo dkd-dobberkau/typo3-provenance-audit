@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CmsProvenance\ProvenanceAudit\WellKnown;
 
+use CmsProvenance\Provenance\Service\AbsoluteUrlResolver;
 use CmsProvenance\Provenance\WellKnown\WellKnownHandlerInterface;
 use CmsProvenance\Provenance\WellKnown\WellKnownRouter;
 use CmsProvenance\ProvenanceAudit\Domain\Repository\AuditDocumentRepository;
@@ -35,6 +36,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         private ExtensionConfiguration $extensionConfiguration,
         private PackageManager $packageManager,
         private Typo3Version $typo3Version,
+        private AbsoluteUrlResolver $urlResolver,
     ) {}
 
     public function getSubPath(): string
@@ -62,7 +64,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
 
         $rows = $this->documentRepository->findDocuments($pageUids, ($page - 1) * $pageSize, $pageSize);
         $signedRecords = $this->documentRepository->findSignedRecords(array_map(static fn(array $row): int => (int)$row['page_uid'], $rows));
-        $siteUrl = rtrim((string)$site->getBase(), '/') . '/';
+        $siteUrl = $this->urlResolver->siteUrl($site, $request);
         $signingAvailable = ExtensionManagementUtility::isLoaded('provenance_signing');
         $factsAvailable = ExtensionManagementUtility::isLoaded('provenance_facts');
 
@@ -79,7 +81,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
             'page' => $page,
             'pageSize' => $pageSize,
             'documents' => array_map(
-                fn(array $row): array => $this->entry($row, $site, $signedRecords[(int)$row['page_uid']] ?? null),
+                fn(array $row): array => $this->entry($row, $site, $request, $signedRecords[(int)$row['page_uid']] ?? null),
                 $rows
             ),
         ];
@@ -90,10 +92,10 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
     /**
      * @return array<string, mixed>
      */
-    private function entry(array $row, Site $site, ?\stdClass $signedRecord): array
+    private function entry(array $row, Site $site, ServerRequestInterface $request, ?\stdClass $signedRecord): array
     {
         $entry = [
-            'url' => (string)$site->getRouter()->generateUri((int)$row['page_uid']),
+            'url' => $this->urlResolver->pageUrl($site, (int)$row['page_uid'], $request),
             '@id' => (string)$row['document_uri'],
             'datePublished' => $this->dateTime((int)$row['first_published_at']),
             'lastSubstantiveRevision' => $this->dateTime((int)$row['last_substantive_revision_at']),
