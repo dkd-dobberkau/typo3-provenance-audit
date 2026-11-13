@@ -64,12 +64,13 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         $signedRecords = $this->documentRepository->findSignedRecords(array_map(static fn(array $row): int => (int)$row['page_uid'], $rows));
         $siteUrl = rtrim((string)$site->getBase(), '/') . '/';
         $signingAvailable = ExtensionManagementUtility::isLoaded('provenance_signing');
+        $factsAvailable = ExtensionManagementUtility::isLoaded('provenance_facts');
 
         $listing = [
             '@context' => ['https://schema.org', 'https://cms-provenance.org/ns/v1'],
             'specVersion' => self::SPEC_VERSION,
             'generator' => $this->generator(),
-            'cpsConformance' => $signingAvailable ? 3 : 2,
+            'cpsConformance' => $this->siteConformanceLevel($signingAvailable, $factsAvailable),
             'site' => array_filter([
                 'url' => $siteUrl,
                 'keys' => $signingAvailable ? rtrim($siteUrl, '/') . self::KEYS_PATH : null,
@@ -106,6 +107,18 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         }
 
         return array_filter($entry, static fn(mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * Layer 1 always; Layers 2 and 4 with signing; Layer 3 with facts on top.
+     */
+    private function siteConformanceLevel(bool $signingAvailable, bool $factsAvailable): int
+    {
+        if (!$signingAvailable) {
+            return 2;
+        }
+
+        return $factsAvailable ? 4 : 3;
     }
 
     private function links(string $endpoint, int $page, int $lastPage): string
