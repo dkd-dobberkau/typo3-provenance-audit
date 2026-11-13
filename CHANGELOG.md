@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Repository skeleton: composer.json, ext_emconf.php, Services.yaml,
   extension icon, contribution guide (milestone M1).
 
+### Changed
+
+- The listing takes its public pages from `PublicPageRepository` of the core
+  extension, the same rule the facts endpoint uses.
+
 ### Fixed
 
 - The listing published relative URLs (site, keys, documents, `Link` header)

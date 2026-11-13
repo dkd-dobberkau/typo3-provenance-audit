@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CmsProvenance\ProvenanceAudit\WellKnown;
 
+use CmsProvenance\Provenance\Domain\Repository\PublicPageRepository;
 use CmsProvenance\Provenance\Service\AbsoluteUrlResolver;
 use CmsProvenance\Provenance\WellKnown\WellKnownHandlerInterface;
 use CmsProvenance\Provenance\WellKnown\WellKnownRouter;
@@ -37,6 +38,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         private PackageManager $packageManager,
         private Typo3Version $typo3Version,
         private AbsoluteUrlResolver $urlResolver,
+        private PublicPageRepository $publicPageRepository,
     ) {}
 
     public function getSubPath(): string
@@ -55,7 +57,7 @@ final readonly class AuditListingHandler implements WellKnownHandlerInterface
         $requestedPage = $request->getQueryParams()['page'] ?? '1';
         $page = MathUtility::canBeInterpretedAsInteger($requestedPage) ? (int)$requestedPage : 0;
 
-        $pageUids = $this->documentRepository->publicPageUids($site->getRootPageId(), time());
+        $pageUids = $this->publicPageRepository->publicPageUids($site->getRootPageId(), time());
         $total = $this->documentRepository->countDocuments($pageUids);
         $lastPage = max(1, (int)ceil($total / $pageSize));
         if ($page < 1 || $page > $lastPage) {

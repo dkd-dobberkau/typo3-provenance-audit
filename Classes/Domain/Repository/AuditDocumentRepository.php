@@ -6,16 +6,11 @@ namespace CmsProvenance\ProvenanceAudit\Domain\Repository;
 
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
-use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
-use TYPO3\CMS\Core\Domain\Repository\PageRepository;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
- * Finds the documents an audit listing may show: standard pages in the live
- * workspace and default language that anonymous visitors can see, with a
- * visible provenance record. A hidden, scheduled or access-restricted page
- * hides its whole subtree.
+ * Finds the provenance records and signatures of the pages an audit listing
+ * may show; which pages are public decides PublicPageRepository of the core.
  */
 final readonly class AuditDocumentRepository
 {
@@ -24,47 +19,6 @@ final readonly class AuditDocumentRepository
     public function __construct(
         private ConnectionPool $connectionPool,
     ) {}
-
-    /**
-     * @return list<int> uids of publicly visible standard pages below and including the root, ascending
-     */
-    public function publicPageUids(int $rootPageUid, int $now): array
-    {
-        $queryBuilder = $this->connectionPool->getQueryBuilderForTable('pages');
-        $queryBuilder->getRestrictions()->removeAll()->add(GeneralUtility::makeInstance(DeletedRestriction::class));
-        $rows = $queryBuilder
-            ->select('uid', 'pid', 'doktype', 'hidden', 'fe_group', 'starttime', 'endtime')
-            ->from('pages')
-            ->where(
-                $queryBuilder->expr()->eq('sys_language_uid', $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)),
-                $queryBuilder->expr()->eq('t3ver_wsid', $queryBuilder->createNamedParameter(0, Connection::PARAM_INT))
-            )
-            ->executeQuery()
-            ->fetchAllAssociative();
-
-        $rowsByUid = array_column($rows, null, 'uid');
-        $children = [];
-        foreach ($rows as $row) {
-            $children[(int)$row['pid']][] = (int)$row['uid'];
-        }
-
-        $visible = [];
-        $queue = isset($rowsByUid[$rootPageUid]) ? [$rootPageUid] : [];
-        while ($queue !== []) {
-            $uid = array_shift($queue);
-            $row = $rowsByUid[$uid];
-            if (!$this->isPublic($row, $now)) {
-                continue;
-            }
-            if ((int)$row['doktype'] === PageRepository::DOKTYPE_DEFAULT) {
-                $visible[] = $uid;
-            }
-            array_push($queue, ...($children[$uid] ?? []));
-        }
-
-        sort($visible);
-        return $visible;
-    }
 
     /**
      * @param list<int> $pageUids
@@ -150,13 +104,5 @@ final readonly class AuditDocumentRepository
             ->where(
                 $queryBuilder->expr()->in('p.uid', $queryBuilder->createNamedParameter($pageUids, Connection::PARAM_INT_ARRAY))
             );
-    }
-
-    private function isPublic(array $page, int $now): bool
-    {
-        return (int)$page['hidden'] === 0
-            && in_array((string)$page['fe_group'], ['', '0'], true)
-            && (int)$page['starttime'] <= $now
-            && ((int)$page['endtime'] === 0 || (int)$page['endtime'] > $now);
     }
 }
